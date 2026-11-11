@@ -1,0 +1,16 @@
+{
+  "name": "localfirst-ai-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first AI Agent: desktop app with OpenRouter free-model routing and local execution",
+  "scripts": {
+    "dev": "pnpm --filter desktop dev",
+    "build": "pnpm --filter desktop build",
+    "typecheck": "pnpm --filter desktop typecheck"
+  },
+  "workspaces": [
+    "apps/desktop",
+    "crates/*"
+  ],
+  "engines": { "node": ">=18.0.0" }
+}

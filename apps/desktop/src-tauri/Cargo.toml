@@ -1,0 +1,23 @@
+[package]
+name = "desktop"
+version = "0.1.0"
+edition = "2021"
+
+[build]
+dist-dir = "../dist"
+
+[profile.release]
+opt-level = "s"
+incremental = true
+
+[dependencies]
+tauri = { version = "2.0", features = ["macos-unwrap", "tray-icon", "message-port"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+tauri-plugin-log = "2.0"
+tauri-plugin-shell = "2.0"
+thiserror = "1.0"
+dirs = "5.0"

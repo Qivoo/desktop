@@ -1,0 +1,24 @@
+[package]
+name = "agent-runtime"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1"
+tracing = "0.1"
+thiserror = "1.0"
+
+[dependencies.crate-model-router]
+path = "../model-router"
+
+[dependencies.crate-context-engine]
+path = "../context-engine"
+
+[dependencies.crate-tool-policy]
+path = "../tool-policy"
+
+[dependencies.crate-local-store]
+path = "../local-store"
+
+[dependencies.crate-provider-openrouter]
+path = "../provider-openrouter"
