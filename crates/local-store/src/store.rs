@@ -45,6 +45,7 @@ impl LocalStore {
             "task_state": session.task_state,
             "workspace_path": session.workspace_path,
             "attachments": session.attachments,
+            "created_at": chrono::Utc::now().to_rfc3339(),
         });
         let state_path = session_path.join("state.json");
         fs::write(&state_path, serde_json::to_string_pretty(&state)?).await?;
@@ -69,7 +70,38 @@ impl LocalStore {
         })
     }
 
+    pub async fn append_event(&self, session_id: &str, event: &Event) -> Result<(), StoreError> {
+        let event_path = self.base_path.join("sessions").join(session_id).join("events.jsonl");
+        let entry = serde_json::json!(event);
+        let line = serde_json::to_string(&entry)?;
+        fs::append_to_file(&event_path, format!("{}\n", line)).await?;
+        Ok(())
+    }
+
+    pub async fn append_message(&self, session_id: &str, message: &crate::context_engine::CanonicalMessage) -> Result<(), StoreError> {
+        let event = Event {
+            event_id: Uuid::new_v4().to_string(),
+            session_id: session_id.to_string(),
+            event_type: "message".to_string(),
+            timestamp: Utc::now().to_rfc3339(),
+            payload: serde_json::to_value(message)?,
+        };
+        self.append_event(session_id, &event).await
+    }
+
     fn session_path(&self, session_id: &str) -> PathBuf {
         self.base_path.join("sessions").join(session_id)
     }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum StoreError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+    #[error("Session not found: {0}")]
+    SessionNotFound(String),
+    #[error("Directory not found: {0}")]
+    DirectoryNotFound(String),
 }

@@ -1,4 +1,5 @@
 use crate::messages::*;
+use tracing::info;
 
 pub struct Context {
     pub messages: Vec<CanonicalMessage>,
@@ -24,5 +25,40 @@ impl Context {
 
     pub fn budget_bytes(&self) -> usize {
         self.context_budget_bytes
+    }
+
+    pub fn current_bytes(&self) -> usize {
+        self.current_bytes
+    }
+
+    pub fn is_within_budget(&self) -> bool {
+        self.current_bytes <= self.context_budget_bytes
+    }
+
+    pub fn add_system_prompt(&mut self, prompt: String) {
+        self.system_prompt = prompt;
+        if self.messages.is_empty() || self.messages[0].role != Role::System {
+            self.messages.insert(0, CanonicalMessage::new_text(Role::System, prompt));
+        }
+    }
+
+    pub fn compact(&mut self, budget: usize) {
+        if self.messages.len() <= 3 {
+            return;
+        }
+        self.context_budget_bytes = budget;
+        self.current_bytes = 0;
+        // Keep system message
+        if let Some(sys) = self.messages.first() {
+            self.messages = vec![sys.clone()];
+            self.current_bytes += 100;
+        }
+        // Keep last N messages
+        let keep = budget / 512;
+        for msg in self.messages.iter().rev().take(keep) {
+            self.messages.insert(0, msg.clone());
+            self.current_bytes += 256;
+        }
+        info!(messages = self.messages.len(), "Context compacted");
     }
 }
