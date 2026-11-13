@@ -38,7 +38,70 @@ impl AgentRuntime {
 
     async fn model_loop(&self, session: &mut AgentSession, context: &Context) -> Result<TurnResult, TurnError> {
         info!(session_id = %session.session_id, "Model loop started");
-        Ok(TurnResult { session_id: session.session_id.clone(), messages: vec![], completed: true })
+        let model_id = self.router.select_best_model(session)?;
+        info!(model_id, "Selected model for turn");
+
+        // Build request
+        let request = ChatCompletionRequest {
+            model: model_id.clone(),
+            messages: session.messages.clone(),
+            temperature: Some(0.7),
+            max_tokens: Some(2048),
+            stream: false,
+            tools: None,
+        };
+
+        // Call provider
+        let response = self.provider.chat_completion(&request).await?;
+        info!(model_id, usage = ?response.usage, "Provider response received");
+
+        // Process response
+        let mut assistant_message = CanonicalMessage::new_text(Role::Assistant, "".to_string());
+        for choice in response.choices {
+            if let Some(content) = choice.message.content {
+                assistant_message.content = Some(vec![ContentPart::Text(content)]);
+            }
+        }
+        assistant_message = assistant_message.with_model_id(model_id.clone());
+        session.messages.push(assistant_message);
+
+        // Check for tool calls
+        if let Some(tool_calls) = self.extract_tool_calls(&response) {
+            self.handle_tool_calls(session, tool_calls).await?
+        }
+
+        self.store.save_session(session_id, session).await?;
+        self.store.append_event(session_id, &Event::TurnCompleted { session_id: session_id.to_string(), result: "completed".to_string() }).await?;
+
+        Ok(TurnResult { session_id: session_id.to_string(), messages: session.messages.clone(), completed: true })
+    }
+
+    fn extract_tool_calls(&self, response: &ChatCompletionResponse) -> Option<Vec<ToolCall>> {
+        // Handle streaming responses and tool calls
+        // This is a simplified placeholder
+        None
+    }
+
+    async fn handle_tool_calls(&self, session: &mut AgentSession, tool_calls: Vec<ToolCall>) -> Result<(), TurnError> {
+        for tool_call in tool_calls {
+            session.messages.push(CanonicalMessage::new_tool_call(Role::Assistant, &tool_call.id, &tool_call.name, tool_call.arguments.clone()));
+
+            let decision = self.policy.evaluate(&ToolCall { tool: tool_call.name.clone(), tool_call_id: tool_call.id.clone(), arguments: tool_call.arguments.clone() });
+
+            match decision {
+                Decision::Allow => {
+                    let result = self.executor.execute(&tool_call.name, &tool_call.arguments).await?;
+                    session.messages.push(CanonicalMessage::new_tool_result(Role::Tool, &tool_call.id, result.clone().into(), false));
+                }
+                Decision::Deny => {
+                    session.messages.push(CanonicalMessage::new_tool_result(Role::Tool, &tool_call.id, serde_json::json!({"error": "command blocked by policy"}), true));
+                }
+                Decision::RequestApproval => {
+                    session.messages.push(CanonicalMessage::new_tool_result(Role::Tool, &tool_call.id, serde_json::json!({"error": "approval required"}), true));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

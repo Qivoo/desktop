@@ -7,3 +7,7 @@ pub use error::ModelRouterError;
 pub use model_info::ModelInfo;
 pub use registry::ModelRegistry;
 pub use router::ModelRouter;
+
+pub use registry::ModelRegistry;
+pub use registry::OpenRouterModelsResponse;
+pub use registry::OpenRouterModelData;
