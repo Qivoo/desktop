@@ -37,18 +37,26 @@ impl PolicyEngine {
     }
 
     pub fn evaluate(&self, tool_call: &ToolCall) -> Decision {
+        // Block known destructive commands
         if tool_call.tool == "shell.run" {
             let args = tool_call.arguments.clone();
             let cmd = args.get("command").and_then(Value::as_str).unwrap_or("");
-            let is_destructive = cmd.contains("rm ") || cmd.contains("rm -rf") || cmd.contains("mkfs") || cmd.contains("format") || cmd.contains("shutdown") || cmd.contains("reboot");
+            let is_destructive = cmd.contains("rm ") || cmd.contains("rm -rf") || cmd.contains("mkfs") ||
+                cmd.contains("format") || cmd.contains("shutdown") || cmd.contains("reboot") ||
+                cmd.contains("dd ");
             if is_destructive {
                 return Decision::Deny;
             }
-            if cmd.contains("curl ") || cmd.contains("wget ") {
+            // Commands outside workspace need approval
+            if !cmd.contains("echo ") && !cmd.contains("ls ") && !cmd.contains("cat ") &&
+               !cmd.contains("grep ") && !cmd.contains("find ") && !cmd.contains("wc ") &&
+               !cmd.contains("sed ") && !cmd.contains("awk ") {
                 return Decision::RequestApproval;
             }
         }
-        if tool_call.tool == "filesystem.write" || tool_call.tool == "filesystem.list" || tool_call.tool == "filesystem.search" {
+        // Outside workspace check for file ops
+        if tool_call.tool == "filesystem.write" || tool_call.tool == "filesystem.list" ||
+           tool_call.tool == "filesystem.search" {
             let path = tool_call.arguments.get("path").and_then(Value::as_str).unwrap_or("");
             if !path.is_empty() && !path.starts_with('/') && !path.starts_with('.') {
                 if tool_call.tool == "filesystem.write" {
@@ -56,6 +64,11 @@ impl PolicyEngine {
                 }
             }
         }
+        // Default to allow if not blocked
         Decision::Allow
+    }
+
+    pub fn require_approval(&self) -> bool {
+        self.require_approval
     }
 }
