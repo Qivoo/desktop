@@ -4,3 +4,4 @@ pub mod types;
 
 pub use error::ApiError;
 pub use types::ChatCompletionRequest;
+pub use client::OpenRouterClient;
