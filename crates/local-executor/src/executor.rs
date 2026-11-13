@@ -2,6 +2,7 @@ use serde_json::Value;
 use std::path::PathBuf;
 use tokio::process::Command;
 use tokio::time::{timeout, Duration};
+use tracing::{info, warn};
 
 pub struct LocalExecutor {
     pub workspace: PathBuf,
@@ -50,6 +51,8 @@ impl LocalExecutor {
             return Err(ToolError::OutputTooLarge { actual: stdout.len(), max_bytes: self.max_output_bytes });
         }
 
+        info!(tool_call_id = %args.get("tool_call_id").cloned().unwrap_or_default(), command, "Shell command executed");
+
         Ok(Value::Object(serde_json::Map::from([
             ("tool_call_id".into(), args.get("tool_call_id").cloned().unwrap_or_default().into()),
             ("stdout".into(), Value::String(stdout)),
@@ -70,6 +73,59 @@ impl LocalExecutor {
         Ok(Value::Object(serde_json::Map::from([
             ("path".into(), Value::String(path.into())),
             ("content".into(), Value::String(contents)),
+        ])))
+    }
+
+    async fn write_file(&self, args: &Value) -> Result<Value, ToolError> {
+        let path = args.get("path").and_then(Value::as_str).ok_or_else(|| ToolError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, "path required")))?;
+        let full_path = self.workspace.join(path);
+        if !full_path.starts_with(&self.workspace) {
+            return Err(ToolError::Io(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path outside workspace")));
+        }
+        let content = args.get("content").and_then(Value::as_str).ok_or_else(|| ToolError::Io(std::io::Error::new(std::io::ErrorKind::InvalidInput, "content required")))?;
+        tokio::fs::write(&full_path, content).await?;
+        Ok(Value::Object(serde_json::Map::from([
+            ("path".into(), Value::String(path.into())),
+            ("bytes_written".into(), Value::Number(content.len().into())),
+        ])))
+    }
+
+    async fn list_dir(&self, args: &Value) -> Result<Value, ToolError> {
+        let path = args.get("path").and_then(Value::as_str).unwrap_or(".");
+        let full_path = self.workspace.join(path);
+        if !full_path.starts_with(&self.workspace) {
+            return Err(ToolError::Io(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "path outside workspace")));
+        }
+        let entries = tokio::fs::read_dir(&full_path).await?;
+        let mut names = Vec::new();
+        for entry in entries {
+            names.push(entry?.file_name().to_string_lossy().to_string());
+        }
+        Ok(Value::Object(serde_json::Map::from([
+            ("path".into(), Value::String(path.into())),
+            ("entries".into(), Value::Array(names.iter().map(|s| Value::String(s.clone())).collect())),
+        ])))
+    }
+
+    async fn search_files(&self, _args: &Value) -> Result<Value, ToolError> {
+        // Placeholder for search implementation
+        Ok(Value::Object(serde_json::Map::from([
+            ("pattern".into(), Value::String("".into())),
+            ("results".into(), Value::Array(vec![])),
+        ])))
+    }
+
+    async fn git_status(&self, _args: &Value) -> Result<Value, ToolError> {
+        Ok(Value::Object(serde_json::Map::from([
+            ("tool".into(), Value::String("git.status".into())),
+            ("output".into(), Value::String("placeholder".into())),
+        ])))
+    }
+
+    async fn git_diff(&self, _args: &Value) -> Result<Value, ToolError> {
+        Ok(Value::Object(serde_json::Map::from([
+            ("tool".into(), Value::String("git.diff".into())),
+            ("output".into(), Value::String("placeholder".into())),
         ])))
     }
 }
